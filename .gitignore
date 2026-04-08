@@ -1,0 +1,9 @@
+data/osm_raw_cache.json
+output/*_preview*.png
+__pycache__/
+data/__pycache__/
+tests/__pycache__/
+data/stores.json
+data/tectonic_geometry.json
+data/siege_geometry.json
+output/*_raw.png
