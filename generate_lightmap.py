@@ -25,8 +25,8 @@ HEIGHT  = 4000
 POINT_SIGMA   = 3.5     # tight core Gaussian per store
 BLOOM_SIGMA_1 = 18.0    # first bloom pass (tight halo)
 BLOOM_SIGMA_2 = 60.0    # second bloom pass (wide atmospheric glow)
-BLOOM_MIX_1   = 0.55    # weight of tight bloom
-BLOOM_MIX_2   = 0.30    # weight of wide bloom
+BLOOM_MIX_1   = 0.40    # weight of tight bloom
+BLOOM_MIX_2   = 0.10    # weight of wide bloom (reduced: was main cause of white blowout)
 
 # ── Brand colors ──────────────────────────────────────────────────────────────
 MCD_COLOR = np.array([1.00, 0.27, 0.00], dtype=np.float32)   # red-orange
@@ -36,8 +36,8 @@ BK_COLOR  = np.array([0.00, 0.47, 1.00], dtype=np.float32)   # electric blue
 # Handled naturally by additive blending
 
 # ── Tone mapping ──────────────────────────────────────────────────────────────
-EXPOSURE  = 2.8   # overall brightness multiplier before tone map
-GAMMA     = 1.9   # output gamma
+EXPOSURE  = 1.6   # overall brightness multiplier before tone map
+GAMMA     = 1.75  # output gamma
 
 
 def mercator_to_pixel(lat: float, lon: float):
@@ -88,14 +88,26 @@ def splat_gaussian(canvas: np.ndarray, x: float, y: float,
     canvas[y0:y1, x0:x1, 2] += kernel * color[2]
 
 
-def tone_map_aces(x: np.ndarray) -> np.ndarray:
+def tone_map_color_preserving(x: np.ndarray) -> np.ndarray:
     """
-    ACES filmic tone mapping — preserves color saturation in bright regions.
+    Luminance-based Reinhard tone mapping.
+    Tone maps luminance only, then rescales RGB — preserves hue and
+    partial saturation even in bright regions (avoids white blowout).
     Input: linear HDR float (any positive value)
     Output: [0, 1] LDR
     """
-    a, b, c, d, e = 2.51, 0.03, 2.43, 0.59, 0.14
-    return np.clip((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0)
+    # Rec.709 luminance weights
+    lum = (0.2126 * x[:, :, 0] +
+           0.7152 * x[:, :, 1] +
+           0.0722 * x[:, :, 2])[:, :, np.newaxis]
+
+    # Extended Reinhard: maps luminance with white point control
+    white = 4.0  # luminance above which detail is crushed (tune this)
+    lum_mapped = lum * (1.0 + lum / (white ** 2)) / (1.0 + lum)
+
+    # Rescale each channel proportionally — preserves color ratio
+    scale = np.where(lum > 1e-6, lum_mapped / lum, 0.0)
+    return np.clip(x * scale, 0.0, 1.0)
 
 
 def main():
@@ -167,7 +179,7 @@ def main():
     # ── Tone mapping ──────────────────────────────────────────────────────────
     print("Tone mapping...")
     canvas *= EXPOSURE
-    canvas = tone_map_aces(canvas)
+    canvas = tone_map_color_preserving(canvas)
 
     # ── Gamma ─────────────────────────────────────────────────────────────────
     canvas = np.power(np.clip(canvas, 0, 1), 1.0 / GAMMA)

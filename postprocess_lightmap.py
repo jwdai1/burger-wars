@@ -10,7 +10,7 @@ import math
 import os
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 INPUT_PNG  = "output/lightmap_raw.png"
 OUTPUT_PNG = "output/lightmap.png"
@@ -168,6 +168,9 @@ def main():
     print("Loading raw render...")
     img = Image.open(INPUT_PNG).convert("RGB")
     print(f"  {img.width}×{img.height}")
+
+    print("Saturation boost...")
+    img = ImageEnhance.Color(img).enhance(1.55)  # 1.0 = no change
 
     print("Vignette...")
     img = add_vignette(img, strength=0.5)
